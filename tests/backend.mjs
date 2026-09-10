@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import {DatabaseSync} from 'node:sqlite';import worker from '../worker/index.js';
+const db=new DatabaseSync(':memory:');for(const file of fs.readdirSync('drizzle').filter(n=>n.endsWith('.sql')))db.exec(fs.readFileSync('drizzle/'+file,'utf8'));
+const env = { DB: { prepare(sql) { return { bind(...args) { const stmt = db.prepare(sql); return { async run() { const r = stmt.run(...args); return {meta: {changes: r.changes}}; }, async first() { return stmt.get(...args); } }; } }; } } };
+let cookie='';const request=async(path,action)=>{const headers={Origin:'https://test.site',Cookie:cookie};if(action)headers['Content-Type']='application/json';const r=await worker.fetch(new Request('https://test.site'+path,{method:action?'POST':'GET',headers,body:action?JSON.stringify(action):undefined}),env);if(r.headers.get('Set-Cookie'))cookie=r.headers.get('Set-Cookie').split(';')[0];return {r,data:await r.json()}};
+let result=await request('/api/profile');assert.equal(result.r.status,200);assert.ok(cookie.includes('terminal_save='));assert.equal(result.data.state.money,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM terminal_saves').get().n,1);
+let again=await request('/api/profile');assert.equal(db.prepare('SELECT COUNT(*) n FROM terminal_saves').get().n,1,'Cookie resumes same save');
+result=await request('/api/action',{action:'accept',phase:'export'});const id=result.data.state.contract.id;
+for(let i=0;i<10;i++)result=await request('/api/action',{action:'deliver',contract:id,index:i});assert.equal(result.data.state.money,1600);
+result=await request('/api/action',{action:'deliver',contract:id,index:9});assert.equal(result.data.state.money,1600,'Duplicate network retry cannot double pay');
+result=await request('/api/action',{action:'upgrade',name:'arm'});assert.equal(result.data.state.money,950);result=await request('/api/profile');assert.equal(result.data.state.upgrades.arm,1,'Purchase persisted');
+const forbidden=await worker.fetch(new Request('https://test.site/api/action',{method:'POST',headers:{Origin:'https://other.site',Cookie:cookie},body:JSON.stringify({action:'testFleet',enabled:false})}),env);assert.equal(forbidden.status,403);console.log('PASS: SQLite-backed save, session resume, contract reward, retry idempotency, persisted purchase and origin validation.');

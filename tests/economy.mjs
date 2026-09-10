@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';import {fresh,act,level,PHASES} from '../worker/economy.js';
+let s=fresh();assert.deepEqual(s.owned,['magnet']);assert.equal(s.testFleet,true);
+s=act(s,{action:'accept',phase:'export'},()=> 'first').state;assert.equal(s.contract.count,10);s.xp=700;
+s=act(s,{action:'damage',contract:'first',index:0,damage:30}).state;assert.equal(s.xp,640);let repeat=act(s,{action:'damage',contract:'first',index:0,damage:30}).state;assert.equal(repeat.xp,640);
+for(let i=0;i<10;i++)s=act(s,{action:'deliver',contract:'first',index:i}).state;assert.equal(s.contract,null);assert.equal(s.last.loss,27);assert.equal(s.money,1573);assert.ok(level(s)>=2);const balance=s.money;s=act(s,{action:'deliver',contract:'first',index:9}).state;assert.equal(s.money,balance,'No duplicate payout');
+s=act(s,{action:'upgrade',name:'speed'}).state;assert.equal(s.upgrades.speed,1);assert.equal(s.money,balance-600);assert.throws(()=>act(s,{action:'vehicle',name:'grapple'}),/Saldo/);
+s.money=10000;s=act(s,{action:'upgrade',name:'contracts'}).state;s=act(s,{action:'vehicle',name:'forklift'}).state;s=act(s,{action:'testFleet',enabled:false}).state;assert.ok(s.owned.includes('forklift'));s=act(s,{action:'accept',phase:'pallet'},()=> 'pallet').state;assert.equal(s.contract.count,12);assert.throws(()=>act(s,{action:'accept',phase:'export'}),/Conclua/);assert.throws(()=>act(s,{action:'deliver',contract:'pallet',index:99}),/inválida/);
+console.log('PASS: test fleet, campaign ownership, 10 initial placements, damage XP and pay, idempotent payouts, purchases, upgrades and larger contracts.');
